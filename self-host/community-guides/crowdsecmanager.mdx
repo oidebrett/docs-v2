@@ -1,0 +1,204 @@
+---
+title: "CrowdSec Manager"
+---
+
+<Note>  
+This is a community guide and is not officially supported. If you encounter issues, please reach out to the project maintainers at the official repositories:  
+- https://crowdsec-manager.hhf.technology/  
+- https://github.com/hhftechnology/crowdsec_manager/  
+</Note>
+
+CrowdSec Manager is a web-based management interface for the CrowdSec security stack. It provides a modern UI for monitoring system health, managing decisions, reviewing logs, configuring Traefik integration, handling backups, and controlling your entire security environment. It integrates directly with Pangolin and supports optional services such as Gerbil.
+
+## Installation
+
+CrowdSec Manager is deployed using Docker and Docker Compose. Ensure that Docker 20.10+ and Docker Compose 2.0+ are installed on your system before proceeding. A detailed installation reference can be found in the official documentation.
+
+### Directory Preparation
+
+Before deploying, create the required directories:
+
+```bash
+sudo mkdir -p /root/config
+sudo mkdir -p /root/config/traefik/logs
+mkdir -p ./backups
+mkdir -p ./data
+```
+
+### Docker Compose Setup
+
+Create or update your `docker-compose.yml` file:
+
+```yaml
+services:
+  crowdsec-manager:
+    image: hhftechnology/crowdsec-manager:latest
+    container_name: crowdsec-manager
+    restart: unless-stopped
+    expose:
+      - "8080"
+    environment:
+      - PORT=8080
+      - ENVIRONMENT=production
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - COMPOSE_FILE=/app/docker-compose.yml
+      - PANGOLIN_DIR=/app
+      - CONFIG_DIR=/app/config
+      - DATABASE_PATH=/app/data/settings.db
+      - TRAEFIK_DYNAMIC_CONFIG=/dynamic_config.yml
+      - TRAEFIK_STATIC_CONFIG=/etc/traefik/traefik_config.yml
+      - TRAEFIK_ACCESS_LOG=/var/log/traefik/access.log
+      - TRAEFIK_ERROR_LOG=/var/log/traefik/traefik.log
+      - CROWDSEC_ACQUIS_FILE=/etc/crowdsec/acquis.yaml
+      - BACKUP_DIR=/app/backups
+      - RETENTION_DAYS=60
+      - INCLUDE_CROWDSEC=false
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /root/config:/app/config
+      - /root/docker-compose.yml:/app/docker-compose.yml
+      - ./backups:/app/backups
+      - /root/config/traefik/logs:/app/logs
+      - ./data:/app/data
+      - /root/config/traefik/logs:/var/log/traefik
+    networks:
+      - pangolin
+
+networks:
+  pangolin:
+    external: true
+```
+
+### Create Required Network
+
+CrowdSec Manager operates on an external Docker network named `pangolin`. Create it if needed:
+
+```bash
+docker network create pangolin
+```
+
+### Deploy the Container
+
+```bash
+docker pull hhftechnology/crowdsec-manager:latest
+docker-compose up -d
+docker ps | grep crowdsec-manager
+docker logs -f crowdsec-manager
+```
+
+## Configuration
+
+CrowdSec Manager relies on environment variables for internal paths and integration settings. Most defaults work without modification. A full environment variable reference is available in the official documentation.
+
+### File and Service Mapping
+
+CrowdSec Manager must be able to read:
+
+* Traefik logs
+* CrowdSec acquisition files
+* The Docker Compose file
+* The Docker socket
+
+Ensure all required volumes are correctly defined.
+
+### Custom Paths
+
+If your system uses custom file locations, always update Docker volumes rather than changing environment variables. The application expects known paths inside the container, and volume mappings provide these paths correctly.
+
+More details:
+[https://crowdsec-manager.hhf.technology/environment-variables](https://crowdsec-manager.hhf.technology/environment-variables)
+
+## Networking
+
+CrowdSec Manager listens on port `8080` in the container.
+
+### Direct Host Access
+
+Expose the port in your compose file:
+
+```yaml
+ports:
+  - "8080:8080"
+```
+
+### Traefik Integration
+
+If you prefer Traefik routing, do not expose the port. Instead use labels such as:
+
+```yaml
+labels:
+  - "traefik.enable=true"
+  - "traefik.http.routers.manager.rule=Host(`manager.example.com`)"
+  - "traefik.http.services.manager.loadbalancer.server.port=8080"
+```
+
+More details:
+[https://crowdsec-manager.hhf.technology/networking](https://crowdsec-manager.hhf.technology/networking)
+
+## Backup and Recovery
+
+CrowdSec Manager includes built-in support for managing system backups.
+
+* Automatic scheduled backups
+* Manual on-demand backups
+* Configurable retention
+* Full restoration from any backup
+
+Backups are stored in the host directory mapped to `/app/backups`.
+
+## Managing Services
+
+The interface provides controls for:
+
+* Starting, stopping, and restarting containers
+* Graceful stack-wide shutdown
+* CrowdSec Console enrollment
+
+A graceful shutdown safely stops all services. After initiating it, the UI becomes unavailable until restarted from the host.
+
+## Notifications
+
+CrowdSec Manager supports alert notifications. The current stable integration is Discord via webhooks.
+
+Options include:
+
+* Webhook ID and token
+* Geoapify API Key for map generation
+* CrowdSec CTI key for enriched intelligence
+
+Changes require a service restart.
+
+More details:
+[https://crowdsec-manager.hhf.technology/notifications](https://crowdsec-manager.hhf.technology/notifications)
+
+## Log Streaming and Analysis
+
+CrowdSec Manager provides real-time WebSocket log streaming for:
+
+* CrowdSec
+* Traefik
+* Pangolin
+* Gerbil
+
+It also provides analysis tools for Traefik access logs.
+
+Ensure the correct log directory is mapped into the container.
+
+## Quick Test
+
+To verify the installation:
+
+```bash
+curl http://localhost:8080/health
+```
+
+If functional, the UI should be reachable at:
+
+`http://your-server-ip:8080`
+
+## Additional Documentation
+
+For detailed explanations of every feature, refer to the full documentation:
+
+* User documentation: [https://crowdsec-manager.hhf.technology/](https://crowdsec-manager.hhf.technology/)
+* Source code and issues: [https://github.com/hhftechnology/crowdsec_manager/](https://github.com/hhftechnology/crowdsec_manager/)
